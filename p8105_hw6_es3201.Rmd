@@ -96,12 +96,79 @@ models_results_df %>%
 ```
 
 # Problem 2
-Load, clean, tidy data
+Load, clean data
 ```{r}
-birthweight_df = read_csv("./data/birthweight.csv")
+birthweight_df = read_csv("./data/birthweight.csv") %>%
+  mutate(
+    babysex = as_factor(babysex),
+    frace = as_factor(frace),
+    mrace = as_factor(mrace)
+    )
+
+```
+Explore data
+```{r}
+birthweight_df %>%
+  ggplot(aes(x = bwt)) +
+  geom_histogram()
+```
+Birthweights appear to be skewed to the left. 
+
+Regression model for data
+
+```{r}
+model_1 = lm(bwt~gaweeks + momage + mrace + smoken + wtgain, data = birthweight_df)
+model_me = lm(bwt~gaweeks, data = birthweight_df)
+model_3 = lm(bwt~bhead*blength*babysex, data = birthweight_df)
+
+broom::tidy(model_1)
+```
+Model 1 was developed based on using hypothesized variables that were important and then subtracting those that were not significant (maternal age, family income).
+
+Plot residuals for model 1
+```{r}
+birthweight_df %>%
+  modelr::add_residuals(model_1) %>%
+  modelr::add_predictions(model_1) %>%
+  ggplot(aes(x = gaweeks, y=resid)) 
 ```
 
+Compare 3 models
+```{r}
+library(modelr)
 
+cv_df =
+  crossv_mc(birthweight_df, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+
+cv_df = 
+  cv_df %>% 
+  mutate(
+    model_1  = map(train, ~lm(bwt~gaweeks + momage + mrace + smoken + wtgain, data = .x)),
+    model_me    = map(train, ~lm(bwt~gaweeks, data = .x)),
+    model_3  = map(train, ~lm(bwt~bhead*blength*babysex, data = .x))) %>% 
+  mutate(
+    rmse_m1 = map2_dbl(model_1, test, ~rmse(model = .x, data = .y)),
+    rmse_mme    = map2_dbl(model_me, test, ~rmse(model = .x, data = .y)),
+    rmse_m3 = map2_dbl(model_3, test, ~rmse(model = .x, data = .y)))
+```
+
+Plot results
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin()
+```
+The best model is model 3 with the lowest RMSE but model 1 performs better than the main effects model.
 
 # Problem 3
 
